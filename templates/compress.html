@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Compressor</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover {
+            background-color: #f0f8ff;
+        }
+
+        .upload-area p {
+            margin: 10px 0 0;
+            color: #7f8c8d;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #3498db;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #2980b9;
+        }
+
+        .btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
+        .file-info {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f7f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+
+        .compression-results {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #2ecc71;
+        }
+
+        .compression-stat {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 10px;
+            padding: 8px 15px;
+            background-color: #2c3e50;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: #2ecc71;
+            width: 0%;
+            transition: width 0.3s ease-in-out;
+        }
+
+        .error {
+            background-color: #ffecec;
+            color: #e74c3c;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .success {
+            background-color: #e8f8f5;
+            color: #27ae60;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #27ae60;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Compressor</h1>
+
+    <div class="container">
+        <div class="upload-area" id="drop-area">
+            <div class="upload-icon">📄</div>
+            <h3>Drop your PDF file here</h3>
+            <p>or</p>
+            <button class="btn" id="select-file-btn">Select file</button>
+            <input type="file" id="file-input" accept=".pdf">
+            <p>Maximum file size: 16MB</p>
+        </div>
+
+        <div id="error-message" class="error hidden"></div>
+
+        <div id="file-info" class="file-info hidden">
+            <h3>PDF Information</h3>
+            <div id="file-details"></div>
+        </div>
+
+        <div id="compression-options" class="hidden">
+            <h3>Compression Options</h3>
+            <label for="compression-method">Select compression Quality</label>
+            <select id="compression-method">
+                <!-- Options will be populated from COMPRESSION_METHODS in JavaScript -->
+            </select>
+
+            <button class="btn" id="compress-btn">Compress PDF</button>
+
+            <div id="progress-container" class="progress-container hidden">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+        </div>
+
+        <div id="compression-results" class="compression-results hidden">
+            <h3>Compression Results</h3>
+            <div id="result-details"></div>
+            <button class="btn" id="download-btn">Download Compressed PDF</button>
+        </div>
+    </div>
+
+    <footer>
+        <p>PDF Compression Tool </p>
+    </footer>
+
+    <script>
+        // DOM elements
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('file-input');
+        const selectFileBtn = document.getElementById('select-file-btn');
+        const fileInfo = document.getElementById('file-info');
+        const fileDetails = document.getElementById('file-details');
+        const compressionOptions = document.getElementById('compression-options');
+        const compressionMethodSelect = document.getElementById('compression-method');
+        const compressBtn = document.getElementById('compress-btn');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const compressionResults = document.getElementById('compression-results');
+        const resultDetails = document.getElementById('result-details');
+        const downloadBtn = document.getElementById('download-btn');
+        const errorMessage = document.getElementById('error-message');
+
+        // Variables to store file and analysis data
+        let currentFile = null;
+        let uploadedFileName = null;
+        let compressedFileName = null;
+
+        // Initialize the app
+        initApp();
+
+        function initApp() {
+            // Set up event listeners
+            dropArea.addEventListener('dragover', onDragOver);
+            dropArea.addEventListener('dragleave', onDragLeave);
+            dropArea.addEventListener('drop', onFileDrop);
+            selectFileBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', onFileSelect);
+            compressBtn.addEventListener('click', compressPDF);
+            downloadBtn.addEventListener('click', downloadCompressedPDF);
+
+            // Load compression methods
+            loadCompressionMethods();
+        }
+
+        function onDragOver(e) {
+            e.preventDefault();
+            dropArea.style.backgroundColor = '#f0f8ff';
+            dropArea.style.borderColor = '#2980b9';
+        }
+
+        function onDragLeave(e) {
+            e.preventDefault();
+            dropArea.style.backgroundColor = '';
+            dropArea.style.borderColor = '#3498db';
+        }
+
+        function onFileDrop(e) {
+            e.preventDefault();
+            dropArea.style.backgroundColor = '';
+            dropArea.style.borderColor = '#3498db';
+
+            const file = e.dataTransfer.files[0];
+            processFile(file);
+        }
+
+        function onFileSelect(e) {
+            const file = e.target.files[0];
+            processFile(file);
+        }
+
+        function processFile(file) {
+            // Reset UI state
+            hideElement(fileInfo);
+            hideElement(compressionOptions);
+            hideElement(compressionResults);
+            hideElement(errorMessage);
+
+            // Check if file is a PDF
+            if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+                showError('Please select a valid PDF file.');
+                return;
+            }
+
+            // Check file size (max 16MB)
+            if (file.size > 16 * 1024 * 1024) {
+                showError('File size exceeds the maximum limit of 16MB.');
+                return;
+            }
+
+            currentFile = file;
+
+            // Upload and analyze the file
+            uploadAndAnalyzeFile(file);
+        }
+
+        function uploadAndAnalyzeFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show progress indicator
+            progressBar.style.width = '50%';
+            showElement(progressContainer);
+
+            fetch('/api/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to upload file.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    progressBar.style.width = '100%';
+
+                    // Store the uploaded file name
+                    uploadedFileName = data.analysis.filename;
+
+                    // Display file info
+                    displayFileInfo(data.analysis);
+
+                    // Show compression options
+                    showElement(compressionOptions);
+                } else {
+                    throw new Error(data.error || 'Failed to analyze file.');
+                }
+            })
+            .catch(error => {
+                showError(error.message);
+                hideElement(progressContainer);
+            })
+            .finally(() => {
+                setTimeout(() => {
+                    hideElement(progressContainer);
+                    progressBar.style.width = '0%';
+                }, 500);
+            });
+        }
+
+        function displayFileInfo(analysis) {
+            // Create HTML for file details
+            let html = `
+                <p><strong>File Name:</strong> ${analysis.original_name}</p>
+
+                <p><strong>Pages:</strong> ${analysis.page_count}</p><p><strong>File Size:</strong> ${formatFileSize(analysis.file_size)}</p>
+            `;
+
+            if (analysis.text_pages !== undefined && analysis.image_pages !== undefined) {
+                html += `
+                    <p><strong>Content Type:</strong> ${analysis.text_pages} text pages, ${analysis.image_pages} image-heavy pages</p>
+                    <p><strong>Images:</strong> ${analysis.total_images} (avg. size: ${formatFileSize(analysis.avg_image_size_kb * 1024)})</p>
+                `;
+            }
+
+            fileDetails.innerHTML = html;
+            showElement(fileInfo);
+        }
+
+        function compressPDF() {
+            if (!uploadedFileName) return;
+
+            const method = compressionMethodSelect.value;
+
+            // Disable compress button
+            compressBtn.disabled = true;
+
+            // Show progress indicator
+            progressBar.style.width = '50%';
+            showElement(progressContainer);
+
+            fetch('/api/compress', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filename: uploadedFileName,
+                    method: method
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Compression failed.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    progressBar.style.width = '100%';
+
+                    // Store compressed file name
+                    compressedFileName = data.result_filename;  // This contains the full compressed filename
+
+                    // Check if the filename is available and not undefined or null
+                    if (compressedFileName) {
+                        // Display compression results
+                        displayCompressionResults(data);
+
+                        // Show the download button
+                        showElement(downloadBtn);
+
+                        // Optional: Remove 'compressed_' prefix when showing the download link
+                        const downloadFileName = compressedFileName.replace(/^compressed_/, '');
+                        downloadBtn.setAttribute('download', downloadFileName);  // Set the filename for download
+                    } else {
+                        throw new Error('Compressed file name is not available.');
+                    }
+                } else {
+                    throw new Error(data.error || 'Compression failed.');
+                }
+            })
+            .catch(error => {
+                showError(error.message);
+            })
+            .finally(() => {
+                // Enable compress button
+                compressBtn.disabled = false;
+
+                setTimeout(() => {
+                    hideElement(progressContainer);
+                    progressBar.style.width = '0%';
+                }, 500);
+            });
+        }
+
+        function displayCompressionResults(data) {
+            const inputSize = data.original_size;
+            const outputSize = data.compressed_size;
+            const reduction = data.reduction;
+
+            let html = `
+                <div class="compression-stat">Compression Method: ${formatMethodName(data.method_used)}</div>
+                <div class="compression-stat">Original Size: ${formatFileSize(inputSize)}</div>
+                <div class="compression-stat">Compressed Size: ${formatFileSize(outputSize)}</div>
+                <div class="compression-stat">Size Reduction: ${formatFileSize(reduction)}</div>
+                <div class="compression-stat">Size Reduction Percent: ${data.reduction_percent.toFixed(2)}%</div>
+            `;
+
+            resultDetails.innerHTML = html;
+            showElement(compressionResults);
+        }
+
+        function downloadCompressedPDF() {
+            if (!compressedFileName) {
+                showError('No compressed file available for download.');
+                return;
+            }
+
+            const downloadUrl = `/api/download/${compressedFileName}`;
+
+            // Create a hidden download link
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+
+            // Optional: If you removed the "compressed_" prefix earlier, use the filename without it.
+            const downloadFileName = compressedFileName.replace(/^compressed_/, '');
+            link.download = downloadFileName;  // Set the desired file name for download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function loadCompressionMethods() {
+            fetch('/api/methods')
+                .then(response => response.json())
+                .then(methods => {
+                    // Add options to select
+                    methods.forEach(method => {
+                        const option = document.createElement('option');
+                        option.value = method.id;
+                        option.textContent = method.name;
+                        compressionMethodSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading compression methods:', error);
+                    // Add fallback options
+                    const fallbackMethods = [
+                        {id: 'auto', name: 'Auto (Recommended)'},
+                        {id: 'ghostscript_screen', name: 'GhostScript - Screen Quality (72 dpi)'},
+                        {id: 'pil_60', name: 'PIL - Medium Quality (60%)'},
+                        {id: 'hybrid', name: 'Hybrid Compression'}
+                    ];
+
+                    fallbackMethods.forEach(method => {
+                        const option = document.createElement('option');
+                        option.value = method.id;
+                        option.textContent = method.name;
+                        compressionMethodSelect.appendChild(option);
+                    });
+                });
+        }
+
+        // Utility functions
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function formatMethodName(method) {
+            // Convert snake_case to readable text
+            return method
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function showElement(element) {
+            element.classList.remove('hidden');
+        }
+
+        function hideElement(element) {
+            element.classList.add('hidden');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            showElement(errorMessage);
+        }
+    </script>
+
+
+</body>
+</html>

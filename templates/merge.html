@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Merger</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .file-input {
+            margin-bottom: 10px;
+        }
+        #filesList {
+            margin: 10px 0;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: #f9f9f9;
+            border-radius: 3px;
+            margin-bottom: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #dff0d8;
+            border: 1px solid #d6e9c6;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            border: 1px solid #ebccd1;
+            color: #a94442;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .file-delete {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Merger</h1>
+
+    <div class="container">
+        <h2>Upload PDFs to Merge</h2>
+        <div class="file-input">
+            <input type="file" id="pdfFiles" accept=".pdf" multiple>
+            <button id="addFiles">Add Files</button>
+        </div>
+
+        <div id="filesList">
+            <p>No files selected</p>
+        </div>
+
+        <button id="mergeButton" disabled>Merge PDFs</button>
+
+        <div class="loading" id="loading">
+            <p>Processing... Please wait.</p>
+        </div>
+
+        <div id="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const pdfFiles = document.getElementById('pdfFiles');
+            const addFiles = document.getElementById('addFiles');
+            const filesList = document.getElementById('filesList');
+            const mergeButton = document.getElementById('mergeButton');
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+
+            // Files to be uploaded
+            let filesToUpload = [];
+
+            // Add files to the list
+            addFiles.addEventListener('click', function() {
+                const files = pdfFiles.files;
+                if (files.length === 0) return;
+
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (file.type === 'application/pdf') {
+                        // Check if file already exists
+                        const exists = filesToUpload.some(f => f.name === file.name && f.size === file.size);
+                        if (!exists) {
+                            filesToUpload.push(file);
+                        }
+                    }
+                }
+
+                updateFilesList();
+                pdfFiles.value = '';
+            });
+
+            // Update the files list display
+            function updateFilesList() {
+                if (filesToUpload.length === 0) {
+                    filesList.innerHTML = '<p>No files selected</p>';
+                    mergeButton.disabled = true;
+                } else {
+                    filesList.innerHTML = '';
+                    filesToUpload.forEach((file, index) => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.innerHTML = `
+                            <span>${file.name} (${formatFileSize(file.size)})</span>
+                            <button class="file-delete" data-index="${index}">Remove</button>
+                        `;
+                        filesList.appendChild(fileItem);
+                    });
+
+                    mergeButton.disabled = filesToUpload.length < 2;
+
+                    // Add event listeners to delete buttons
+                    document.querySelectorAll('.file-delete').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const index = parseInt(this.getAttribute('data-index'));
+                            filesToUpload.splice(index, 1);
+                            updateFilesList();
+                        });
+                    });
+                }
+            }
+
+            // Format file size
+            function formatFileSize(bytes) {
+                if (bytes < 1024) return bytes + ' bytes';
+                else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                else return (bytes / 1048576).toFixed(1) + ' MB';
+            }
+
+            // Merge PDFs
+            mergeButton.addEventListener('click', function() {
+                if (filesToUpload.length < 2) {
+                    showResult('At least two PDF files are required for merging', false);
+                    return;
+                }
+
+                // Show loading
+                loading.style.display = 'block';
+                result.style.display = 'none';
+
+                // Create FormData
+                const formData = new FormData();
+                filesToUpload.forEach(file => {
+                    formData.append('files', file);
+                });
+
+                // Send request to API
+                fetch('/api/merge', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loading.style.display = 'none';
+
+                    if (data.success) {
+                        let resultHtml = `
+                            <h3>Merge Successful!</h3>
+                            <p>Total pages: ${data.total_pages}</p>
+                            <p>Output size: ${data.output_size_formatted}</p>
+                            <p>Files merged: ${data.merged_files}</p>
+<!--                            <h4>Files included:</h4>-->
+                            <ul>
+                        `;
+
+<!--                        data.file_info.forEach(file => {-->
+<!--                            resultHtml += `<li>${file.filename} (${file.page_count} pages)</li>`;-->
+<!--                        });-->
+
+                        resultHtml += `</ul>
+                            <p><a href="/api/download/${data.output_filename}" target="_blank">Download Merged PDF</a></p>
+                        `;
+
+                        showResult(resultHtml, true);
+                    } else {
+                        showResult(data.error || 'An unknown error occurred', false);
+                    }
+                })
+                .catch(error => {
+                    loading.style.display = 'none';
+                    showResult('Failed to connect to the server. Please try again.', false);
+                    console.error('Error:', error);
+                });
+            });
+
+            // Show result message
+            function showResult(message, isSuccess) {
+                result.innerHTML = message;
+                result.className = isSuccess ? 'success' : 'error';
+                result.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

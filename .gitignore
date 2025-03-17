@@ -1,0 +1,40 @@
+# ignore virtual environment folder
+venv/
+.venv/
+
+# Ignore common virtual environment directories
+venv/
+.venv/
+env/
+virtualenv/
+envs/
+
+# To catch environments in any subdirectory
+**/env/
+**/.venv/
+**/venv/
+**/virtualenv/
+
+
+# Ignore environment files
+.env
+
+# ignore IDE/editor configuration files
+.vscode/
+.idea/
+
+# ignore everything in user uploads directory
+uploads/*
+# except the uploads folder itself (to keep the folder in git)
+!uploads/
+
+results/*
+!results/
+
+# Ignore __pycache__ inside selenium_scripts
+utils/__pycache__
+# globally ignore all __pycache__ folders
+**__pycache__
+
+# ignore DB files
+#users.db

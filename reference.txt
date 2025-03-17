@@ -1,0 +1,42 @@
+Index page
+
+Available status values:
+
+data-status="new" - Shows a green "NEW" badge
+data-status="beta" - Shows an orange "BETA" badge
+data-status="soon" - Shows a gray "SOON" badge and disables the link
+data-status="" or omitted - No badge shown
+
+sample code
+
+        <div class="operation-card" data-status="new">
+            <span class="status-badge status-new">NEW</span>
+            <h3>Compress PDF</h3>
+            <p>Reduce file size while maintaining quality</p>
+            <a href="/compress">Compress File</a>
+        </div>
+
+        <div class="operation-card" data-status="">
+            <h3>Merge PDFs</h3>
+            <p>Combine multiple PDF files into a single document</p>
+            <a href="/merge">Merge Files</a>
+        </div>
+
+        <div class="operation-card" data-status="beta">
+            <span class="status-badge status-beta">BETA</span>
+            <h3>Split PDF</h3>
+            <p>Extract pages or split PDF into multiple files</p>
+            <a href="/split">Split File</a>
+        </div>
+
+        <div class="operation-card" data-status="soon">
+            <span class="status-badge status-soon">SOON</span>
+            <h3>Protect PDF</h3>
+            <p>Add password protection to your PDFs</p>
+            <a class="disabled">Protect File</a>
+        </div>
+
+
+####################
+
+

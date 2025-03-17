@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Insert PDF at Position</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+</head>
+<body>
+    <h1>Insert PDF at Position</h1>
+    <form id="insertForm">
+        <div>
+            <label for="baseFile">Base PDF:</label>
+            <input type="file" id="baseFile" name="base_file" accept=".pdf" required>
+        </div>
+        <div>
+            <label for="insertFile">PDF to Insert:</label>
+            <input type="file" id="insertFile" name="insert_file" accept=".pdf" required>
+        </div>
+        <div>
+            <label for="position">Insert At Page:</label>
+            <input type="number" id="position" name="position" min="1" value="1" required>
+        </div>
+        <button type="submit">Insert PDF</button>
+    </form>
+
+    <div id="result"></div>
+    <div id="debug"></div>
+
+    <script>
+        const insertForm = document.getElementById('insertForm');
+        const baseFileInput = document.getElementById('baseFile');
+        const insertFileInput = document.getElementById('insertFile');
+        const positionInput = document.getElementById('position');
+        const resultDiv = document.getElementById('result');
+        const debugDiv = document.getElementById('debug');
+
+        // Clear result when inputs change
+        baseFileInput.addEventListener('change', () => resultDiv.innerHTML = '');
+        insertFileInput.addEventListener('change', () => resultDiv.innerHTML = '');
+        positionInput.addEventListener('focus', () => resultDiv.innerHTML = '');
+
+        insertForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Clear previous results
+            resultDiv.innerHTML = '';
+            debugDiv.innerHTML = '';
+
+            // Check if files are selected
+            if (!baseFileInput.files.length) {
+                resultDiv.innerHTML = '<p>Error: Please select a base PDF file</p>';
+                return;
+            }
+
+            if (!insertFileInput.files.length) {
+                resultDiv.innerHTML = '<p>Error: Please select a PDF file to insert</p>';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('base_file', baseFileInput.files[0]);
+            formData.append('insert_file', insertFileInput.files[0]);
+            formData.append('position', positionInput.value);
+
+            try {
+                resultDiv.innerHTML = '<p>Processing... Please wait.</p>';
+
+                const response = await axios.post('/api/insert_pdf', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+
+                resultDiv.innerHTML = '';
+
+                if (response.data.success) {
+                    // Clear debug div on success
+                    debugDiv.innerHTML = '';
+
+                    resultDiv.innerHTML = `
+                        <p>PDF insertion successful!</p>
+                        <p>Base PDF: ${response.data.base_page_count} pages</p>
+                        <p>Inserted PDF: ${response.data.insert_page_count} pages</p>
+                        <p>Inserted at page: ${response.data.insertion_position}</p>
+                        <p>Total pages in result: ${response.data.new_page_count}</p>
+                        <a href="/api/download/${response.data.output_filename}" download>
+                            Download Result PDF
+                        </a>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p>Error: ${response.data.error || 'Unknown error'}</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error details:', error);
+
+                if (error.response) {
+                    resultDiv.innerHTML = `
+                        <p>Error (${error.response.status}): ${error.response.data.error || 'Unknown error occurred'}</p>
+                    `;
+                    debugDiv.innerHTML = `<p>Response status: ${error.response.status}</p>
+                                         <p>Response data: ${JSON.stringify(error.response.data)}</p>`;
+                } else if (error.request) {
+                    resultDiv.innerHTML = `
+                        <p>Error: No response received from server</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p>Error: ${error.message}</p>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

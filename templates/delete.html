@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Page Deletion</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+</head>
+<body>
+    <h1>PDF Page Deletion</h1>
+    <form id="deleteForm">
+        <input type="file" id="pdfFile" accept=".pdf" required>
+        <input type="text" id="pagesToRemove" placeholder="Pages to remove (comma-separated)" required>
+        <button type="submit">Delete Pages</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        const fileInput = document.getElementById('pdfFile');
+        const pagesInput = document.getElementById('pagesToRemove');
+        const resultDiv = document.getElementById('result');
+        const deleteForm = document.getElementById('deleteForm');
+
+        // Clear result div when file is selected
+        fileInput.addEventListener('change', function() {
+            resultDiv.innerHTML = '';
+        });
+
+        // Clear result div when pages input is focused
+        pagesInput.addEventListener('focus', function() {
+            resultDiv.innerHTML = '';
+        });
+
+        deleteForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Clear previous results
+            resultDiv.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('pages_to_remove', pagesInput.value);
+
+            try {
+                const response = await axios.post('/api/delete_pages', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+
+                if (response.data.success) {
+                    resultDiv.innerHTML = `
+                        <p>PDF processed successfully!</p>
+                        <p>Pages removed: ${response.data.pages_removed.join(', ')}</p>
+                        <p>Total pages in PDF: ${response.data.total_pages}</p>
+                        <a href="/api/download/${response.data.output_filename}" download>
+                            Download Modified PDF
+                        </a>
+                    `;
+                }
+            } catch (error) {
+                if (error.response && error.response.data) {
+                    resultDiv.innerHTML = `
+                        <p>Error: ${error.response.data.error}</p>
+                        ${error.response.data.total_pages ?
+                            `<p>Total pages in PDF: ${error.response.data.total_pages}</p>` :
+                            ''
+                        }
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p>Error: Unknown error occurred</p>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

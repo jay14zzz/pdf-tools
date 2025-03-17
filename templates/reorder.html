@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Page Reorder Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .upload-container.active {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .pages-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .page-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            position: relative;
+            cursor: move;
+            background-color: white;
+        }
+        .page-item canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .page-number {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
+        .instructions {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Page Reorder Tool</h1>
+
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <p>1. Upload a PDF file</p>
+        <p>2. Drag and drop the pages to reorder them</p>
+        <p>3. Click "Apply Reordering" to process the PDF with the new page order</p>
+    </div>
+
+    <div class="upload-container" id="uploadContainer">
+        <p>Drag & Drop your PDF here or</p>
+        <input type="file" id="fileInput" accept=".pdf" />
+    </div>
+
+    <div id="loading" class="loading">
+        <p>Loading PDF pages...</p>
+    </div>
+
+    <div id="pagesContainer" class="pages-container"></div>
+
+    <button id="applyButton" disabled>Apply Reordering</button>
+
+    <div id="result" class="result">
+        <h3>Result:</h3>
+        <p id="resultMessage"></p>
+        <a id="downloadLink" style="display: none;">Download Reordered PDF</a>
+    </div>
+
+    <script>
+        // Initialize PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const pagesContainer = document.getElementById('pagesContainer');
+        const applyButton = document.getElementById('applyButton');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const resultMessage = document.getElementById('resultMessage');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let pdfFile = null;
+        let pdfName = '';
+        let totalPages = 0;
+        let sortable = null;
+
+        // Set up drag and drop for file upload
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadContainer.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadContainer.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadContainer.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            uploadContainer.classList.add('active');
+        }
+
+        function unhighlight() {
+            uploadContainer.classList.remove('active');
+        }
+
+        uploadContainer.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type === 'application/pdf') {
+                    pdfFile = file;
+                    pdfName = file.name;
+                    loadPdfPages(file);
+                } else {
+                    alert('Please upload a PDF file.');
+                }
+            }
+        }
+
+        async function loadPdfPages(file) {
+            loading.style.display = 'block';
+            pagesContainer.innerHTML = '';
+
+            try {
+                const arrayBuffer = await readFileAsArrayBuffer(file);
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                totalPages = pdf.numPages;
+
+                for (let i = 1; i <= totalPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'page-item';
+                    pageDiv.dataset.pageIndex = i - 1; // 0-based index for API
+
+                    const viewport = page.getViewport({ scale: 0.5 });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+
+                    const pageNumber = document.createElement('div');
+                    pageNumber.className = 'page-number';
+                    pageNumber.textContent = `Page ${i}`;
+
+                    pageDiv.appendChild(canvas);
+                    pageDiv.appendChild(pageNumber);
+                    pagesContainer.appendChild(pageDiv);
+                }
+
+                // Initialize sortable
+                if (sortable) {
+                    sortable.destroy();
+                }
+                sortable = new Sortable(pagesContainer, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost'
+                });
+
+                applyButton.disabled = false;
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                alert('Error loading PDF: ' + error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // Apply reordering
+        applyButton.addEventListener('click', async function() {
+            if (!pdfFile) return;
+
+            // Create FormData for the PDF upload
+            const formData = new FormData();
+            formData.append('file', pdfFile);
+
+            try {
+                // First, upload the PDF
+                const uploadResponse = await fetch('/api/extract-info', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('Failed to upload PDF');
+                }
+
+                const uploadData = await uploadResponse.json();
+                if (!uploadData.success) {
+                    throw new Error(uploadData.error || 'Failed to upload PDF');
+                }
+
+                const filename = uploadData.info.filename;
+
+                // Get the new page order
+                const pageItems = pagesContainer.querySelectorAll('.page-item');
+                const newOrder = Array.from(pageItems).map(item => parseInt(item.dataset.pageIndex));
+
+                // Send reordering request
+                const reorderResponse = await fetch('/api/reorder-pages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: filename,
+                        new_order: newOrder
+                    })
+                });
+
+                if (!reorderResponse.ok) {
+                    throw new Error('Failed to reorder PDF');
+                }
+
+                const reorderData = await reorderResponse.json();
+                if (!reorderData.success) {
+                    throw new Error(reorderData.error || 'Failed to reorder PDF');
+                }
+
+                // Show success message
+                resultMessage.textContent = `Success! PDF pages have been reordered.`;
+                downloadLink.href = `/api/download/${reorderData.output_filename}`;
+                downloadLink.textContent = `Download Reordered PDF`;
+                downloadLink.style.display = 'block';
+                result.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultMessage.textContent = `Error: ${error.message}`;
+                downloadLink.style.display = 'none';
+                result.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

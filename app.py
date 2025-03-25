@@ -5,6 +5,8 @@ from werkzeug.utils import secure_filename
 import tempfile
 from PyPDF2 import PdfReader, PdfWriter
 import fitz
+import base64
+
 
 # Import PDF utility functions from separate modules
 
@@ -28,6 +30,14 @@ from utils.pdf_operations import (
     extract_pdf_info,
     insert_pdf_at_position
 )
+
+# Import the PDF signing module
+from utils.pdf_signing import (
+    process_signature_image,
+    get_pdf_info,
+    sign_pdf_document
+)
+
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -64,34 +74,47 @@ def generate_result_filepath(original_filename, prefix=""):
     return output_filepath, output_filename
 
 
-def handle_file_upload(request, required_file_key='file'):
-    """Handle file upload with validation"""
+def handle_file_upload(request, required_file_key='file', allowed_extensions=None):
+    """
+    Handle file upload with validation
+
+    Args:
+        request: Flask request object
+        required_file_key: Form field name for the file
+        allowed_extensions: List of allowed file extensions (e.g., ['.pdf', '.png'])
+                          If None, defaults to ['.pdf']
+
+    Returns:
+        tuple: (file_data, error_response, status_code)
+    """
+    # Set default allowed extensions if none provided
+    if allowed_extensions is None:
+        allowed_extensions = ['.pdf']
+
+    # Convert to lowercase for case-insensitive comparison
+    allowed_extensions = [ext.lower() for ext in allowed_extensions]
+
     if required_file_key not in request.files:
         return None, {'error': f'No {required_file_key} provided'}, 400
 
     file = request.files[required_file_key]
+
     if file.filename == '':
         return None, {'error': 'No selected file'}, 400
 
-    if not file.filename.lower().endswith('.pdf'):
-        return None, {'error': 'Invalid file type. Please upload a PDF file'}, 400
+    # Check file extension
+    file_ext = os.path.splitext(file.filename.lower())[1]
+    if file_ext not in allowed_extensions:
+        allowed_ext_str = ', '.join(allowed_extensions)
+        return None, {'error': f'Invalid file type. Allowed types: {allowed_ext_str}'}, 400
 
     filepath, unique_filename, original_filename = save_uploaded_file(file)
-
-    # Validate PDF
-    is_valid, error_msg = validate_pdf(filepath)
-    if not is_valid:
-        # Remove invalid file
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        return None, {'error': error_msg}, 400
 
     return {
         'filepath': filepath,
         'unique_filename': unique_filename,
         'original_filename': original_filename
     }, None, 200
-
 
 # Routes
 @app.route('/')
@@ -133,7 +156,14 @@ def reorder():
     """Render the reorder page"""
     return render_template('reorder.html')
 
+@app.route('/sign')
+def sign():
+    """Render the sign page"""
+    return render_template('sign.html')
 
+
+
+###############################################################
 # API Endpoints
 @app.route('/api/analyze', methods=['POST'])
 def analyze_pdf_api():
@@ -418,6 +448,104 @@ def get_methods():
     return jsonify(COMPRESSION_QUALITY)
 
 
+# Routes needed for PDF signing with PDF.js frontend
+@app.route('/api/process-signature', methods=['POST'])
+def process_signature_api():
+    """Process a signature image for use in PDF signing"""
+    # Use enhanced file upload handler with image extensions
+    file_data, error_response, status_code = handle_file_upload(
+        request,
+        required_file_key='signature',
+        allowed_extensions=['.png', '.jpg', '.jpeg', '.gif', '.bmp']
+    )
+
+    if error_response:
+        return jsonify(error_response), status_code
+
+    # Process the signature image
+    with open(file_data['filepath'], 'rb') as f:
+        signature_data = f.read()
+
+    # from pdf_signing import process_signature_image
+    success, processed_data, base64_data = process_signature_image(signature_data)
+    if not success:
+        return jsonify(processed_data), 400
+
+    # Save the processed signature
+    processed_sig_path = os.path.join(app.config['UPLOAD_FOLDER'], f'sig_{file_data["unique_filename"]}')
+    with open(processed_sig_path, 'wb') as f:
+        f.write(processed_data)
+
+    return jsonify({
+        'success': True,
+        'signature_image': f'data:image/png;base64,{base64_data}',
+        'signature_filename': f'sig_{file_data["unique_filename"]}',
+        'message': 'Signature processed successfully'
+    })
+
+
+@app.route('/api/sign-pdf', methods=['POST'])
+def sign_pdf_api():
+    """Sign a PDF with a processed signature"""
+    data = request.json
+
+    # Get filenames from request
+    pdf_filename = data.get('pdf_filename')
+    signature_filename = data.get('signature_filename')
+
+    if not pdf_filename or not signature_filename:
+        return jsonify({'error': 'Missing filename parameters'}), 400
+
+    # Get file paths
+    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf_filename)
+    sig_path = os.path.join(app.config['UPLOAD_FOLDER'], signature_filename)
+
+    if not os.path.exists(pdf_path) or not os.path.exists(sig_path):
+        return jsonify({'error': 'PDF or signature file not found'}), 404
+
+    # Generate output filename
+    output_filepath, output_filename = generate_result_filepath(pdf_filename, prefix="signed")
+
+    # Get placement coordinates
+    coords = {
+        'x': float(data.get('x', 0)),
+        'y': float(data.get('y', 0)),
+        'width': float(data.get('width', 150)),
+        'height': float(data.get('height', 80)),
+        'page': int(data.get('page', 0))
+    }
+
+    # Sign the PDF
+    # from pdf_signing import sign_pdf_document
+    success, result = sign_pdf_document(
+        pdf_path,
+        sig_path,
+        output_filepath,
+        coords,
+        page_num=coords['page']
+    )
+
+    if not success:
+        return jsonify(result), 500
+
+    return jsonify({
+        'success': True,
+        'output_filename': output_filename,
+        **result,
+        'download_url': f'/api/download/{output_filename}'
+    })
+
+
+# Add a route to serve the original PDF for PDF.js to render
+@app.route('/api/serve-pdf/<filename>')
+def serve_pdf(filename):
+    """Serve PDF for browser rendering"""
+    return send_file(
+        os.path.join(app.config['UPLOAD_FOLDER'], filename),
+        mimetype='application/pdf'
+    )
+
+
 # Download routes
 @app.route('/api/download/<filename>')
 def download_file(filename):
@@ -438,4 +566,4 @@ def cleanup_old_files():
 if __name__ == '__main__':
     # app.run(host='0.0.0.0', port=5000)
     app.run(debug=True)
-    #
+    ###

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Signing Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/interact.js/1.10.17/interact.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .step {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .pdf-container {
+            position: relative;
+            border: 1px solid #ddd;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        #pdf-viewer {
+            width: 100%;
+            height: 800px;
+        }
+        .signature {
+            position: absolute;
+            border: 1px dashed blue;
+            cursor: move;
+            z-index: 100;
+            max-width: 200px;
+            max-height: 100px;
+            object-fit: contain;
+            touch-action: none;
+        }
+        .resize-handle {
+            width: 10px;
+            height: 10px;
+            background-color: blue;
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            cursor: se-resize;
+            z-index: 101;
+            touch-action: none;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        input[type="file"] {
+            margin-bottom: 10px;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .info {
+            background-color: #d9edf7;
+            color: #31708f;
+        }
+        #download-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 15px;
+            background-color: #337ab7;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Signing Tool</h1>
+
+    <div class="container">
+        <!-- Step 1: Upload PDF -->
+        <div class="step" id="step1">
+            <h2>Step 1: Upload PDF</h2>
+            <form id="pdf-upload-form">
+                <input type="file" id="pdf-file" accept=".pdf" required>
+                <button type="submit">Upload PDF</button>
+            </form>
+            <div id="pdf-status" class="status"></div>
+        </div>
+
+        <!-- Step 2: Upload Signature -->
+        <div class="step hidden" id="step2">
+            <h2>Step 2: Upload Signature</h2>
+            <form id="signature-upload-form">
+                <input type="file" id="signature-file" accept=".png,.jpg,.jpeg,.gif" required>
+                <button type="submit">Upload Signature</button>
+            </form>
+            <div id="signature-status" class="status"></div>
+        </div>
+
+        <!-- Step 3: Position Signature -->
+        <div class="step hidden" id="step3">
+            <h2>Step 3: Position Signature</h2>
+            <p>Drag and resize the signature to position it correctly on the document.</p>
+            <div class="pdf-container">
+                <canvas id="pdf-viewer"></canvas>
+                <img id="signature-img" class="signature hidden">
+                <div id="resize-handle" class="resize-handle hidden"></div>
+            </div>
+            <button id="sign-pdf-btn">Sign PDF</button>
+            <div id="signing-status" class="status"></div>
+        </div>
+
+        <!-- Step 4: Download Signed PDF -->
+        <div class="step hidden" id="step4">
+            <h2>Step 4: Download Signed PDF</h2>
+            <p>Your PDF has been successfully signed!</p>
+            <a id="download-link" href="#" target="_blank">Download Signed PDF</a>
+        </div>
+    </div>
+
+    <script>
+        // Initialize PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // Global variables
+        let pdfInfo = {
+            pdfDoc: null,
+            pageNum: 1,
+            scale: 1.5,
+            canvas: document.getElementById('pdf-viewer'),
+            ctx: document.getElementById('pdf-viewer').getContext('2d'),
+            filename: null,
+            width: 0,
+            height: 0
+        };
+
+        let signatureInfo = {
+            filename: null,
+            x: 0,
+            y: 0,
+            width: 150,
+            height: 80
+        };
+
+        // Step 1: Upload PDF
+        document.getElementById('pdf-upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('pdf-file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showStatus('pdf-status', 'Please select a PDF file.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            showStatus('pdf-status', 'Uploading PDF...', 'info');
+
+            fetch('/api/extract-info', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('pdf-status', 'PDF uploaded successfully!', 'success');
+                    pdfInfo.filename = data.info.filename;
+
+                    // Load PDF for display using PDF.js
+                    loadPDF(data.info.filename);
+
+                    // Move to step 2
+                    document.getElementById('step2').classList.remove('hidden');
+                } else {
+                    showStatus('pdf-status', 'Error: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('pdf-status', 'Error: ' + error, 'error');
+            });
+        });
+
+        // Step 2: Upload Signature
+        document.getElementById('signature-upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('signature-file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showStatus('signature-status', 'Please select a signature image.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('signature', file);
+
+            showStatus('signature-status', 'Uploading signature...', 'info');
+
+            fetch('/api/process-signature', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('signature-status', 'Signature uploaded successfully!', 'success');
+                    signatureInfo.filename = data.signature_filename;
+
+                    // Display signature on the PDF
+                    const signatureImg = document.getElementById('signature-img');
+                    signatureImg.src = data.signature_image;
+                    signatureImg.classList.remove('hidden');
+
+                    // Position signature in the middle of the PDF viewer initially
+                    const canvas = document.getElementById('pdf-viewer');
+                    const canvasRect = canvas.getBoundingClientRect();
+
+                    signatureImg.style.left = ((canvasRect.width / 2) - 75) + 'px';
+                    signatureImg.style.top = ((canvasRect.height / 2) - 40) + 'px';
+                    signatureImg.style.width = '150px';
+                    signatureImg.style.height = '80px';
+
+                    // Make resize handle visible and position it
+                    const resizeHandle = document.getElementById('resize-handle');
+                    resizeHandle.classList.remove('hidden');
+                    updateResizeHandlePosition();
+
+                    // Move to step 3
+                    document.getElementById('step3').classList.remove('hidden');
+                } else {
+                    showStatus('signature-status', 'Error: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('signature-status', 'Error: ' + error, 'error');
+            });
+        });
+
+        // Step 3: Sign PDF
+        document.getElementById('sign-pdf-btn').addEventListener('click', function() {
+            const signatureImg = document.getElementById('signature-img');
+            const canvas = document.getElementById('pdf-viewer');
+
+            // Get signature position relative to the PDF
+            const canvasRect = canvas.getBoundingClientRect();
+            const signatureRect = signatureImg.getBoundingClientRect();
+
+            // Calculate position in PDF coordinates
+            const x = (signatureRect.left - canvasRect.left) / pdfInfo.scale;
+            const y = (signatureRect.top - canvasRect.top) / pdfInfo.scale;
+            const width = signatureRect.width / pdfInfo.scale;
+            const height = signatureRect.height / pdfInfo.scale;
+
+            // Prepare data for signing
+            const data = {
+                pdf_filename: pdfInfo.filename,
+                signature_filename: signatureInfo.filename,
+                x: x,
+                y: y,
+                width: width,
+                height: height,
+                page: pdfInfo.pageNum - 1,
+                scale_factor: pdfInfo.scale
+            };
+
+            showStatus('signing-status', 'Signing PDF...', 'info');
+
+            fetch('/api/sign-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('signing-status', 'PDF signed successfully!', 'success');
+
+                    // Set download link
+                    document.getElementById('download-link').href = data.download_url;
+
+                    // Move to step 4
+                    document.getElementById('step4').classList.remove('hidden');
+                } else {
+                    showStatus('signing-status', 'Error: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('signing-status', 'Error: ' + error, 'error');
+            });
+        });
+
+        // Make signature draggable with interact.js
+        interact('.signature')
+            .draggable({
+                inertia: true,
+                modifiers: [
+                    interact.modifiers.restrictRect({
+                        restriction: 'parent',
+                        endOnly: true
+                    })
+                ],
+                listeners: {
+                    move: dragMoveListener
+                }
+            });
+
+        function dragMoveListener(event) {
+            const target = event.target;
+
+            // Get current position and add the delta
+            const left = (parseFloat(target.style.left) || 0) + event.dx;
+            const top = (parseFloat(target.style.top) || 0) + event.dy;
+
+            // Update the element's position using direct left/top properties
+            target.style.left = left + 'px';
+            target.style.top = top + 'px';
+
+            // Store the delta for reference (not using transform)
+            target.setAttribute('data-x', event.dx);
+            target.setAttribute('data-y', event.dy);
+
+            // Update the resize handle position
+            updateResizeHandlePosition();
+        }
+
+        // Make resize handle draggable for resizing
+        interact('#resize-handle')
+            .draggable({
+                listeners: {
+                    move: resizeSignature
+                }
+            });
+
+        function resizeSignature(event) {
+            const signature = document.getElementById('signature-img');
+            const handle = document.getElementById('resize-handle');
+
+            // Calculate new dimensions
+            const newWidth = Math.max(50, parseFloat(signature.style.width) + event.dx);
+            const newHeight = Math.max(30, parseFloat(signature.style.height) + event.dy);
+
+            // Update signature size
+            signature.style.width = newWidth + 'px';
+            signature.style.height = newHeight + 'px';
+
+            // Update handle position directly
+            updateResizeHandlePosition();
+        }
+
+        function updateResizeHandlePosition() {
+            const signature = document.getElementById('signature-img');
+            const handle = document.getElementById('resize-handle');
+
+            if (signature && handle) {
+                const left = parseFloat(signature.style.left) + parseFloat(signature.style.width) - 10;
+                const top = parseFloat(signature.style.top) + parseFloat(signature.style.height) - 10;
+
+                handle.style.left = left + 'px';
+                handle.style.top = top + 'px';
+            }
+        }
+
+        // Load PDF using PDF.js
+        function loadPDF(filename) {
+            const url = `/api/serve-pdf/${filename}`;
+
+            pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+                pdfInfo.pdfDoc = pdfDoc_;
+
+                // Get the first page
+                pdfInfo.pdfDoc.getPage(pdfInfo.pageNum).then(function(page) {
+                    const viewport = page.getViewport({ scale: pdfInfo.scale });
+                    pdfInfo.canvas.height = viewport.height;
+                    pdfInfo.canvas.width = viewport.width;
+                    pdfInfo.width = viewport.width;
+                    pdfInfo.height = viewport.height;
+
+                    // Render PDF page
+                    const renderContext = {
+                        canvasContext: pdfInfo.ctx,
+                        viewport: viewport
+                    };
+
+                    page.render(renderContext);
+                });
+            });
+        }
+
+        // Helper function to show status messages
+        function showStatus(elementId, message, type) {
+            const statusElement = document.getElementById(elementId);
+            statusElement.textContent = message;
+            statusElement.className = 'status ' + type;
+        }
+    </script>
+</body>
+</html>

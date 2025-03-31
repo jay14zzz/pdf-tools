@@ -39,17 +39,10 @@
             border: 1px solid #ddd;
             margin-top: 20px;
             min-height: 500px;
-            background-color: #f9f9f9;
-        }
-        #pdf-canvas-container {
-            position: relative;
-            margin: 0 auto;
-            border: 3px solid #2196F3;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            background-color: white;
         }
         #pdf-canvas {
             display: block;
+            margin: 0 auto;
         }
         #signature-overlay {
             position: absolute;
@@ -69,7 +62,6 @@
             border-radius: 4px;
             cursor: pointer;
             margin-top: 10px;
-            margin-right: 10px;
         }
         .btn:disabled {
             background-color: #cccccc;
@@ -85,14 +77,7 @@
             color: red;
             margin-top: 10px;
         }
-        .success-message {
-            color: green;
-            margin-top: 10px;
-        }
         .hidden {
-            display: none;
-        }
-        .page-navigation.hidden {
             display: none;
         }
         .page-navigation {
@@ -116,14 +101,6 @@
         }
         .page-navigation span {
             font-weight: bold;
-        }
-        .control-panel {
-            display: flex;
-            align-items: center;
-            margin-top: 15px;
-        }
-        #sign-again-btn {
-            background-color: #FF9800;
         }
     </style>
 </head>
@@ -152,12 +129,10 @@
             <div id="metadata-content"></div>
         </div>
 
-        <div class="pdf-workspace hidden" id="pdf-workspace">
-            <div id="pdf-canvas-container">
-                <canvas id="pdf-canvas"></canvas>
-                <div id="signature-overlay" class="hidden">
-                    <img id="signature-drag-img" src="" style="width: 100%; height: 100%;">
-                </div>
+        <div class="pdf-workspace" id="pdf-workspace">
+            <canvas id="pdf-canvas"></canvas>
+            <div id="signature-overlay" class="hidden">
+                <img id="signature-drag-img" src="" style="width: 100%; height: 100%;">
             </div>
         </div>
 
@@ -169,9 +144,7 @@
 
         <div class="control-panel">
             <button id="sign-pdf-btn" class="btn hidden">Sign PDF</button>
-            <button id="sign-again-btn" class="btn hidden">Sign Again</button>
             <a id="download-link" class="btn hidden" href="#" download>Download Signed PDF</a>
-            <span id="success-message" class="success-message hidden">PDF signed successfully!</span>
         </div>
     </div>
 
@@ -185,16 +158,13 @@
         const pdfUploadStatus = document.getElementById('pdf-upload-status');
         const signatureUploadStatus = document.getElementById('signature-upload-status');
         const errorContainer = document.getElementById('error-container');
-        const successMessage = document.getElementById('success-message');
         const pdfMetadata = document.getElementById('pdf-metadata');
         const metadataContent = document.getElementById('metadata-content');
         const pdfWorkspace = document.getElementById('pdf-workspace');
-        const pdfCanvasContainer = document.getElementById('pdf-canvas-container');
         const pdfCanvas = document.getElementById('pdf-canvas');
         const signatureOverlay = document.getElementById('signature-overlay');
         const signatureDragImg = document.getElementById('signature-drag-img');
         const signPdfBtn = document.getElementById('sign-pdf-btn');
-        const signAgainBtn = document.getElementById('sign-again-btn');
         const downloadLink = document.getElementById('download-link');
         const pageNavigation = document.getElementById('page-navigation');
         const prevPageBtn = document.getElementById('prev-page');
@@ -213,15 +183,6 @@
         // Initialize PDF viewer
         let pdfContext = pdfCanvas.getContext('2d');
 
-        // Check if both PDF and signature are uploaded and enable/disable sign button accordingly
-        function updateSignButtonState() {
-            if (pdfFile && signatureFile) {
-                signPdfBtn.classList.remove('hidden');
-            } else {
-                signPdfBtn.classList.add('hidden');
-            }
-        }
-
         // Render PDF page
         async function renderPage(pageNum) {
             if (!pdfDoc) return;
@@ -233,10 +194,6 @@
             const viewport = page.getViewport({ scale: pdfScale });
             pdfCanvas.height = viewport.height;
             pdfCanvas.width = viewport.width;
-
-            // Set the canvas container dimensions to match the canvas
-            pdfCanvasContainer.style.width = `${viewport.width}px`;
-            pdfCanvasContainer.style.height = `${viewport.height}px`;
 
             // Render PDF page
             const renderContext = {
@@ -255,56 +212,6 @@
 
             // Update current page
             currentPage = pageNum;
-
-            // If signature is visible, make sure it's within bounds
-            if (!signatureOverlay.classList.contains('hidden')) {
-                constrainSignaturePosition();
-            }
-        }
-
-        // Constrain signature to PDF boundaries
-        function constrainSignaturePosition() {
-            const containerRect = pdfCanvasContainer.getBoundingClientRect();
-            const signatureRect = signatureOverlay.getBoundingClientRect();
-
-            // Get current position
-            const currentLeft = parseInt(signatureOverlay.style.left) || 0;
-            const currentTop = parseInt(signatureOverlay.style.top) || 0;
-
-            // Calculate container boundaries
-            const containerWidth = containerRect.width;
-            const containerHeight = containerRect.height;
-
-            // Calculate signature dimensions
-            const signatureWidth = signatureRect.width;
-            const signatureHeight = signatureRect.height;
-
-            // Constrain position
-            let newLeft = Math.max(0, Math.min(currentLeft, containerWidth - signatureWidth));
-            let newTop = Math.max(0, Math.min(currentTop, containerHeight - signatureHeight));
-
-            // Apply new position
-            signatureOverlay.style.left = `${newLeft}px`;
-            signatureOverlay.style.top = `${newTop}px`;
-        }
-
-        // Reset UI after sign operation
-        function resetSignUI() {
-            // Hide download button and success message
-            downloadLink.classList.add('hidden');
-            successMessage.classList.add('hidden');
-
-            // Enable sign button
-            signPdfBtn.disabled = false;
-
-            // Update sign button visibility based on current state
-            updateSignButtonState();
-
-            // Hide sign again button
-            signAgainBtn.classList.add('hidden');
-
-            // Clear error message
-            errorContainer.textContent = '';
         }
 
         // PDF Upload
@@ -315,9 +222,6 @@
                 console.error('No file selected');
                 return;
             }
-
-            // Reset UI state when a new PDF is uploaded
-            resetSignUI();
 
             console.log('Selected PDF File:', file.name);
 
@@ -352,9 +256,6 @@
                     // Set total pages
                     totalPages = data.info.page_count || 1;
 
-                    // Show PDF workspace since PDF is uploaded
-                    pdfWorkspace.classList.remove('hidden');
-
                     // Load PDF content using PDF.js
                     if (data.info.pdf_base64) {
                         const byteCharacters = atob(data.info.pdf_base64);
@@ -387,8 +288,10 @@
                     // Clear any previous errors
                     errorContainer.textContent = '';
 
-                    // Update sign button status
-                    updateSignButtonState();
+                    // Enable sign PDF button if signature is uploaded
+                    if (signatureFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
                 } else {
                     throw new Error(data.error || 'Failed to upload PDF');
                 }
@@ -402,10 +305,6 @@
                 pdfFile = null;
                 pdfDoc = null;
                 pageNavigation.classList.add('hidden');
-                pdfWorkspace.classList.add('hidden');
-
-                // Update sign button status
-                updateSignButtonState();
             });
         });
 
@@ -417,9 +316,6 @@
                 console.error('No signature file selected');
                 return;
             }
-
-            // Reset UI state when a new signature is uploaded
-            resetSignUI();
 
             console.log('Selected Signature File:', file.name);
 
@@ -448,8 +344,10 @@
                     signatureOverlay.classList.remove('hidden');
                     makeSignatureDraggable();
 
-                    // Update sign button status
-                    updateSignButtonState();
+                    // Enable sign PDF button
+                    if (pdfFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
 
                     // Clear any previous errors
                     errorContainer.textContent = '';
@@ -461,34 +359,26 @@
                 console.error('Signature Upload Error:', error);
                 errorContainer.textContent = error.message;
                 signatureUploadStatus.textContent = 'Select a signature image';
-
-                // Reset signature file
-                signatureFile = null;
-
-                // Update sign button status
-                updateSignButtonState();
             });
         });
 
         // Make signature draggable
         function makeSignatureDraggable() {
             let isDragging = false;
+            let currentX;
+            let currentY;
             let initialX;
             let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
 
-            // Set signature overlay as absolute position relative to PDF container
+            // Ensure signature overlay is absolutely positioned
             signatureOverlay.style.position = 'absolute';
             signatureOverlay.style.zIndex = '10';
 
-            // Event listeners for dragging
             signatureOverlay.addEventListener('mousedown', dragStart);
             document.addEventListener('mousemove', drag);
             document.addEventListener('mouseup', dragEnd);
-
-            // Event listener for resize
-            signatureOverlay.addEventListener('resize', function() {
-                constrainSignaturePosition();
-            });
 
             function dragStart(e) {
                 // Only start dragging if clicking on the signature image
@@ -508,19 +398,19 @@
                 if (isDragging) {
                     e.preventDefault();
 
-                    // Get container boundaries
-                    const containerRect = pdfCanvasContainer.getBoundingClientRect();
+                    // Get workspace boundaries
+                    const workspaceRect = pdfWorkspace.getBoundingClientRect();
                     const signatureRect = signatureOverlay.getBoundingClientRect();
 
-                    // Calculate new position relative to container
-                    let newX = e.clientX - containerRect.left - initialX;
-                    let newY = e.clientY - containerRect.top - initialY;
+                    // Calculate new position
+                    let newX = e.clientX - workspaceRect.left - initialX;
+                    let newY = e.clientY - workspaceRect.top - initialY;
 
                     // Constrain horizontal movement
-                    newX = Math.max(0, Math.min(newX, containerRect.width - signatureRect.width));
+                    newX = Math.max(0, Math.min(newX, workspaceRect.width - signatureRect.width));
 
                     // Constrain vertical movement
-                    newY = Math.max(0, Math.min(newY, containerRect.height - signatureRect.height));
+                    newY = Math.max(0, Math.min(newY, workspaceRect.height - signatureRect.height));
 
                     // Apply new position
                     signatureOverlay.style.left = `${newX}px`;
@@ -530,18 +420,16 @@
 
             function dragEnd(e) {
                 isDragging = false;
-                // Ensure signature is within bounds after drag ends
-                constrainSignaturePosition();
             }
 
             // Initial setup
             signatureOverlay.style.width = '150px';
             signatureOverlay.style.height = '80px';
 
-            // Position signature in center of canvas
-            const containerRect = pdfCanvasContainer.getBoundingClientRect();
-            const initialPosX = (containerRect.width - 150) / 2;
-            const initialPosY = (containerRect.height - 80) / 2;
+            // Position signature in center of workspace
+            const workspaceRect = pdfWorkspace.getBoundingClientRect();
+            const initialPosX = (workspaceRect.width - 150) / 2;
+            const initialPosY = (workspaceRect.height - 80) / 2;
 
             signatureOverlay.style.left = `${initialPosX}px`;
             signatureOverlay.style.top = `${initialPosY}px`;
@@ -554,18 +442,18 @@
                 return;
             }
 
-            // Get signature overlay position relative to PDF canvas
-            const pdfCanvasRect = pdfCanvasContainer.getBoundingClientRect();
+            // Get signature overlay position relative to PDF workspace
+            const pdfWorkspaceRect = pdfWorkspace.getBoundingClientRect();
             const signatureRect = signatureOverlay.getBoundingClientRect();
+            const pdfCanvasRect = pdfCanvas.getBoundingClientRect();
 
             const signData = {
                 pdf_filename: pdfFile.uniqueFilename,
                 signature_filename: signatureSessionId,
-                // The backend expects a 0-indexed page number, while PDF.js uses 1-indexed
-                page: currentPage - 1,
+                page_number: currentPage, // Add the current page number
                 // Calculate position relative to PDF canvas
-                x: parseInt(signatureOverlay.style.left) || 0,
-                y: parseInt(signatureOverlay.style.top) || 0,
+                x: signatureRect.left - pdfCanvasRect.left,
+                y: signatureRect.top - pdfCanvasRect.top,
                 width: signatureRect.width,
                 height: signatureRect.height
             };
@@ -580,35 +468,17 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Show download link
                     downloadLink.href = data.download_url;
                     downloadLink.classList.remove('hidden');
-
-                    // Disable sign button
                     signPdfBtn.disabled = true;
-                    signPdfBtn.classList.add('hidden');
-
-                    // Show success message
-                    successMessage.classList.remove('hidden');
-
-                    // Show sign again button
-                    signAgainBtn.classList.remove('hidden');
-
-                    // Clear error message
-                    errorContainer.textContent = '';
+                    errorContainer.textContent = 'PDF signed successfully!';
                 } else {
                     throw new Error(data.error || 'Failed to sign PDF');
                 }
             })
             .catch(error => {
                 errorContainer.textContent = error.message;
-                successMessage.classList.add('hidden');
             });
-        });
-
-        // Sign Again Button
-        signAgainBtn.addEventListener('click', function() {
-            resetSignUI();
         });
 
         // Display PDF Metadata
@@ -624,7 +494,7 @@
             `;
 
             metadataContent.innerHTML = metadataHTML;
-            //pdfMetadata.classList.remove('hidden');
+            pdfMetadata.classList.remove('hidden');
         }
 
         // Page navigation
@@ -637,13 +507,6 @@
         nextPageBtn.addEventListener('click', function() {
             if (currentPage < totalPages) {
                 renderPage(currentPage + 1);
-            }
-        });
-
-        // Window resize handler
-        window.addEventListener('resize', function() {
-            if (signatureOverlay && !signatureOverlay.classList.contains('hidden')) {
-                constrainSignaturePosition();
             }
         });
     </script>

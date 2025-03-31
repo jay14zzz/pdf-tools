@@ -92,9 +92,6 @@
         .hidden {
             display: none;
         }
-        .page-navigation.hidden {
-            display: none;
-        }
         .page-navigation {
             display: flex;
             justify-content: center;
@@ -152,7 +149,7 @@
             <div id="metadata-content"></div>
         </div>
 
-        <div class="pdf-workspace hidden" id="pdf-workspace">
+        <div class="pdf-workspace" id="pdf-workspace">
             <div id="pdf-canvas-container">
                 <canvas id="pdf-canvas"></canvas>
                 <div id="signature-overlay" class="hidden">
@@ -212,15 +209,6 @@
 
         // Initialize PDF viewer
         let pdfContext = pdfCanvas.getContext('2d');
-
-        // Check if both PDF and signature are uploaded and enable/disable sign button accordingly
-        function updateSignButtonState() {
-            if (pdfFile && signatureFile) {
-                signPdfBtn.classList.remove('hidden');
-            } else {
-                signPdfBtn.classList.add('hidden');
-            }
-        }
 
         // Render PDF page
         async function renderPage(pageNum) {
@@ -296,9 +284,7 @@
 
             // Enable sign button
             signPdfBtn.disabled = false;
-
-            // Update sign button visibility based on current state
-            updateSignButtonState();
+            signPdfBtn.classList.remove('hidden');
 
             // Hide sign again button
             signAgainBtn.classList.add('hidden');
@@ -352,9 +338,6 @@
                     // Set total pages
                     totalPages = data.info.page_count || 1;
 
-                    // Show PDF workspace since PDF is uploaded
-                    pdfWorkspace.classList.remove('hidden');
-
                     // Load PDF content using PDF.js
                     if (data.info.pdf_base64) {
                         const byteCharacters = atob(data.info.pdf_base64);
@@ -387,8 +370,10 @@
                     // Clear any previous errors
                     errorContainer.textContent = '';
 
-                    // Update sign button status
-                    updateSignButtonState();
+                    // Enable sign PDF button if signature is uploaded
+                    if (signatureFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
                 } else {
                     throw new Error(data.error || 'Failed to upload PDF');
                 }
@@ -402,10 +387,6 @@
                 pdfFile = null;
                 pdfDoc = null;
                 pageNavigation.classList.add('hidden');
-                pdfWorkspace.classList.add('hidden');
-
-                // Update sign button status
-                updateSignButtonState();
             });
         });
 
@@ -448,8 +429,10 @@
                     signatureOverlay.classList.remove('hidden');
                     makeSignatureDraggable();
 
-                    // Update sign button status
-                    updateSignButtonState();
+                    // Enable sign PDF button
+                    if (pdfFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
 
                     // Clear any previous errors
                     errorContainer.textContent = '';
@@ -461,12 +444,6 @@
                 console.error('Signature Upload Error:', error);
                 errorContainer.textContent = error.message;
                 signatureUploadStatus.textContent = 'Select a signature image';
-
-                // Reset signature file
-                signatureFile = null;
-
-                // Update sign button status
-                updateSignButtonState();
             });
         });
 

@@ -328,9 +328,53 @@ def insert_pdf_api():
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 
+def serve_pdf_content(filename):
+    """
+    Internal function to serve PDF content securely
+    Returns file content or None if file not found
+    """
+    full_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    try:
+        with open(full_path, 'rb') as file:
+            return file.read()
+    except FileNotFoundError:
+        return None
+
+
 @app.route('/api/extract-info', methods=['POST'])
 def extract_info_api():
-    """Extract and return detailed PDF information"""
+    """
+    Extract and return detailed PDF information
+    Optional parameter 'include_pdf_content' to retrieve PDF file content
+    """
+
+    # Debug print to understand incoming request
+    # print(f"Request Content Type: {request.content_type}")
+    # print(f"Request Files: {request.files}")
+
+    # Check if PDF content should be included
+    # include_pdf_content = (
+    #     request.args.get('include_pdf_content') or
+    #     request.form.get('include_pdf_content') or
+    #     request.json.get('include_pdf_content') if request.json else False
+    # )
+
+    include_pdf_content = request.args.get('include_pdf_content') or \
+                          request.form.get('include_pdf_content') or \
+                          (request.json.get('include_pdf_content') if request.is_json else False)
+
+    # Ensure file is present in different request types
+    if not request.files and not request.form.get('file'):
+        return jsonify({
+            'success': False,
+            'error': 'No file uploaded',
+            'details': {
+                'content_type': request.content_type,
+                'method': request.method
+            }
+        }), 400
+
     file_data, error_response, status_code = handle_file_upload(request)
 
     if error_response:
@@ -341,6 +385,13 @@ def extract_info_api():
     if info['success']:
         info['filename'] = file_data['unique_filename']
         info['original_name'] = file_data['original_filename']
+
+        # Add PDF content only if explicitly requested
+        if include_pdf_content:
+            pdf_content = serve_pdf_content(file_data['unique_filename'])
+            if pdf_content:
+                info['pdf_base64'] = base64.b64encode(pdf_content).decode('utf-8')
+
         return jsonify({
             'success': True,
             'info': info
@@ -350,6 +401,30 @@ def extract_info_api():
             'success': False,
             'error': info.get('error', 'Failed to extract PDF information')
         }), 500
+
+# # old
+# @app.route('/api/extract-info', methods=['POST'])
+# def extract_info_api():
+#     """Extract and return detailed PDF information"""
+#     file_data, error_response, status_code = handle_file_upload(request)
+#
+#     if error_response:
+#         return jsonify(error_response), status_code
+#
+#     # Extract PDF information
+#     info = extract_pdf_info(file_data['filepath'])
+#     if info['success']:
+#         info['filename'] = file_data['unique_filename']
+#         info['original_name'] = file_data['original_filename']
+#         return jsonify({
+#             'success': True,
+#             'info': info
+#         })
+#     else:
+#         return jsonify({
+#             'success': False,
+#             'error': info.get('error', 'Failed to extract PDF information')
+#         }), 500
 
 
 @app.route('/api/split', methods=['POST'])
@@ -534,16 +609,16 @@ def sign_pdf_api():
         **result,
         'download_url': f'/api/download/{output_filename}'
     })
-
-
-# Add a route to serve the original PDF for PDF.js to render
-@app.route('/api/serve-pdf/<filename>')
-def serve_pdf(filename):
-    """Serve PDF for browser rendering"""
-    return send_file(
-        os.path.join(app.config['UPLOAD_FOLDER'], filename),
-        mimetype='application/pdf'
-    )
+#
+# # commented & modified extract_info_api to serve pdf optionally
+# # Add a route to serve the original PDF for PDF.js to render
+# @app.route('/api/serve-pdf/<filename>')
+# def serve_pdf(filename):
+#     """Serve PDF for browser rendering"""
+#     return send_file(
+#         os.path.join(app.config['UPLOAD_FOLDER'], filename),
+#         mimetype='application/pdf'
+#     )
 
 
 # Download routes

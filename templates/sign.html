@@ -125,6 +125,29 @@
         #sign-again-btn {
             background-color: #FF9800;
         }
+        /* Progress bar styles */
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 18px;
+            background-color: #2196F3;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.3s ease;
+            text-align: center;
+            line-height: 18px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .upload-progress {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -136,12 +159,24 @@
                 <h3>Upload PDF</h3>
                 <input type="file" id="pdf-upload" accept=".pdf">
                 <p id="pdf-upload-status">Select a PDF to upload</p>
+                <!-- PDF Upload Progress Bar -->
+                <div class="upload-progress hidden" id="pdf-upload-progress">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="pdf-progress-bar">0%</div>
+                    </div>
+                </div>
             </div>
 
             <div class="upload-box">
                 <h3>Upload Signature</h3>
                 <input type="file" id="signature-upload" accept="image/*">
                 <p id="signature-upload-status">Select a signature image</p>
+                <!-- Signature Upload Progress Bar -->
+                <div class="upload-progress hidden" id="signature-upload-progress">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="signature-progress-bar">0%</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -200,6 +235,12 @@
         const prevPageBtn = document.getElementById('prev-page');
         const nextPageBtn = document.getElementById('next-page');
         const pageInfo = document.getElementById('page-info');
+
+        // Progress bar elements
+        const pdfUploadProgress = document.getElementById('pdf-upload-progress');
+        const pdfProgressBar = document.getElementById('pdf-progress-bar');
+        const signatureUploadProgress = document.getElementById('signature-upload-progress');
+        const signatureProgressBar = document.getElementById('signature-progress-bar');
 
         // State variables
         let pdfFile = null;
@@ -307,96 +348,115 @@
             errorContainer.textContent = '';
         }
 
-        // PDF Upload
+        // Update progress bar
+        function updateProgressBar(progressBar, value) {
+            progressBar.style.width = `${value}%`;
+            progressBar.textContent = `${value}%`;
+        }
+
+        // PDF Upload with XMLHttpRequest for progress tracking
         pdfUpload.addEventListener('change', function(event) {
-            console.log('PDF Upload Event Triggered');
             const file = event.target.files[0];
-            if (!file) {
-                console.error('No file selected');
-                return;
-            }
+            if (!file) return;
 
             // Reset UI state when a new PDF is uploaded
             resetSignUI();
-
             console.log('Selected PDF File:', file.name);
 
+            // Show progress bar
+            pdfUploadProgress.classList.remove('hidden');
+            updateProgressBar(pdfProgressBar, 0);
+
+            // Create XMLHttpRequest for uploading with progress
+            const xhr = new XMLHttpRequest();
             const formData = new FormData();
             formData.append('file', file);
             formData.append('include_pdf_content', 'true');
 
-            console.log('Attempting to fetch PDF info');
-            fetch('/api/extract-info', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                console.log('Fetch Response:', response);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+            // Track upload progress
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    updateProgressBar(pdfProgressBar, percentComplete);
                 }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Fetch Data:', data);
-                if (data.success) {
-                    // Update PDF upload status
-                    pdfUploadStatus.textContent = `Uploaded: ${file.name}`;
+            });
 
-                    // Store the unique filename for later use in signing
-                    pdfFile = {
-                        originalFile: file,
-                        uniqueFilename: data.info.filename
-                    };
+            // Handle completion
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            // Update PDF upload status
+                            pdfUploadStatus.textContent = `Uploaded: ${file.name}`;
+                            updateProgressBar(pdfProgressBar, 100);
 
-                    // Set total pages
-                    totalPages = data.info.page_count || 1;
+                            // Store the unique filename for later use in signing
+                            pdfFile = {
+                                originalFile: file,
+                                uniqueFilename: data.info.filename
+                            };
 
-                    // Show PDF workspace since PDF is uploaded
-                    pdfWorkspace.classList.remove('hidden');
+                            // Set total pages
+                            totalPages = data.info.page_count || 1;
 
-                    // Load PDF content using PDF.js
-                    if (data.info.pdf_base64) {
-                        const byteCharacters = atob(data.info.pdf_base64);
-                        const byteNumbers = new Array(byteCharacters.length);
-                        for (let i = 0; i < byteCharacters.length; i++) {
-                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                        }
-                        const byteArray = new Uint8Array(byteNumbers);
+                            // Show PDF workspace since PDF is uploaded
+                            pdfWorkspace.classList.remove('hidden');
 
-                        // Load PDF document
-                        pdfjsLib.getDocument({ data: byteArray }).promise.then(pdf => {
-                            pdfDoc = pdf;
+                            // Load PDF content using PDF.js
+                            if (data.info.pdf_base64) {
+                                const byteCharacters = atob(data.info.pdf_base64);
+                                const byteNumbers = new Array(byteCharacters.length);
+                                for (let i = 0; i < byteCharacters.length; i++) {
+                                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                }
+                                const byteArray = new Uint8Array(byteNumbers);
 
-                            // Show page navigation
-                            if (totalPages > 1) {
-                                pageNavigation.classList.remove('hidden');
+                                // Load PDF document
+                                pdfjsLib.getDocument({ data: byteArray }).promise.then(pdf => {
+                                    pdfDoc = pdf;
+
+                                    // Show page navigation
+                                    if (totalPages > 1) {
+                                        pageNavigation.classList.remove('hidden');
+                                    }
+
+                                    // Render first page
+                                    renderPage(1);
+                                }).catch(error => {
+                                    console.error('PDF.js error:', error);
+                                    errorContainer.textContent = 'Failed to load PDF: ' + error.message;
+                                });
                             }
 
-                            // Render first page
-                            renderPage(1);
-                        }).catch(error => {
-                            console.error('PDF.js error:', error);
-                            errorContainer.textContent = 'Failed to load PDF: ' + error.message;
-                        });
+                            // Display PDF metadata
+                            displayPdfMetadata(data.info);
+
+                            // Clear any previous errors
+                            errorContainer.textContent = '';
+
+                            // Update sign button status
+                            updateSignButtonState();
+                        } else {
+                            throw new Error(data.error || 'Failed to upload PDF');
+                        }
+                    } catch (error) {
+                        console.error('PDF Upload Error:', error);
+                        errorContainer.textContent = error.message;
+                        updateProgressBar(pdfProgressBar, 0);
                     }
-
-                    // Display PDF metadata
-                    displayPdfMetadata(data.info);
-
-                    // Clear any previous errors
-                    errorContainer.textContent = '';
-
-                    // Update sign button status
-                    updateSignButtonState();
                 } else {
-                    throw new Error(data.error || 'Failed to upload PDF');
+                    errorContainer.textContent = `Server error: ${xhr.status}`;
+                    updateProgressBar(pdfProgressBar, 0);
                 }
-            })
-            .catch(error => {
-                console.error('PDF Upload Error:', error);
-                errorContainer.textContent = error.message;
+            });
+
+            // Handle errors
+            xhr.addEventListener('error', function() {
+                console.error('PDF Upload XHR Error');
+                errorContainer.textContent = 'Network error during upload';
                 pdfUploadStatus.textContent = 'Select a PDF to upload';
+                updateProgressBar(pdfProgressBar, 0);
 
                 // Reset PDF file and preview
                 pdfFile = null;
@@ -407,60 +467,80 @@
                 // Update sign button status
                 updateSignButtonState();
             });
+
+            // Send the request
+            xhr.open('POST', '/api/extract-info', true);
+            xhr.send(formData);
         });
 
-        // Signature Upload
+        // Signature Upload with XMLHttpRequest for progress tracking
         signatureUpload.addEventListener('change', function(event) {
-            console.log('Signature Upload Event Triggered');
             const file = event.target.files[0];
-            if (!file) {
-                console.error('No signature file selected');
-                return;
-            }
+            if (!file) return;
 
             // Reset UI state when a new signature is uploaded
             resetSignUI();
-
             console.log('Selected Signature File:', file.name);
 
+            // Show progress bar
+            signatureUploadProgress.classList.remove('hidden');
+            updateProgressBar(signatureProgressBar, 0);
+
+            // Create XMLHttpRequest for uploading with progress
+            const xhr = new XMLHttpRequest();
             const formData = new FormData();
             formData.append('signature', file);
 
-            console.log('Attempting to fetch Signature info');
-            fetch('/api/process-signature', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                console.log('Fetch Response:', response);
-                return response.json();
-            })
-            .then(data => {
-                console.log('Fetch Data:', data);
-                if (data.success) {
-                    // Update signature upload status
-                    signatureUploadStatus.textContent = `Uploaded: ${file.name}`;
-                    signatureFile = file;
-                    signatureSessionId = data.signature_filename;
-
-                    // Prepare draggable signature overlay
-                    signatureDragImg.src = data.signature_image;
-                    signatureOverlay.classList.remove('hidden');
-                    makeSignatureDraggable();
-
-                    // Update sign button status
-                    updateSignButtonState();
-
-                    // Clear any previous errors
-                    errorContainer.textContent = '';
-                } else {
-                    throw new Error(data.error || 'Failed to process signature');
+            // Track upload progress
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    updateProgressBar(signatureProgressBar, percentComplete);
                 }
-            })
-            .catch(error => {
-                console.error('Signature Upload Error:', error);
-                errorContainer.textContent = error.message;
+            });
+
+            // Handle completion
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            // Update signature upload status
+                            signatureUploadStatus.textContent = `Uploaded: ${file.name}`;
+                            updateProgressBar(signatureProgressBar, 100);
+                            signatureFile = file;
+                            signatureSessionId = data.signature_filename;
+
+                            // Prepare draggable signature overlay
+                            signatureDragImg.src = data.signature_image;
+                            signatureOverlay.classList.remove('hidden');
+                            makeSignatureDraggable();
+
+                            // Update sign button status
+                            updateSignButtonState();
+
+                            // Clear any previous errors
+                            errorContainer.textContent = '';
+                        } else {
+                            throw new Error(data.error || 'Failed to process signature');
+                        }
+                    } catch (error) {
+                        console.error('Signature Upload Error:', error);
+                        errorContainer.textContent = error.message;
+                        updateProgressBar(signatureProgressBar, 0);
+                    }
+                } else {
+                    errorContainer.textContent = `Server error: ${xhr.status}`;
+                    updateProgressBar(signatureProgressBar, 0);
+                }
+            });
+
+            // Handle errors
+            xhr.addEventListener('error', function() {
+                console.error('Signature Upload XHR Error');
+                errorContainer.textContent = 'Network error during upload';
                 signatureUploadStatus.textContent = 'Select a signature image';
+                updateProgressBar(signatureProgressBar, 0);
 
                 // Reset signature file
                 signatureFile = null;
@@ -468,6 +548,10 @@
                 // Update sign button status
                 updateSignButtonState();
             });
+
+            // Send the request
+            xhr.open('POST', '/api/process-signature', true);
+            xhr.send(formData);
         });
 
         // Make signature draggable

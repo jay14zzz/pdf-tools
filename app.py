@@ -402,30 +402,6 @@ def extract_info_api():
             'error': info.get('error', 'Failed to extract PDF information')
         }), 500
 
-# # old
-# @app.route('/api/extract-info', methods=['POST'])
-# def extract_info_api():
-#     """Extract and return detailed PDF information"""
-#     file_data, error_response, status_code = handle_file_upload(request)
-#
-#     if error_response:
-#         return jsonify(error_response), status_code
-#
-#     # Extract PDF information
-#     info = extract_pdf_info(file_data['filepath'])
-#     if info['success']:
-#         info['filename'] = file_data['unique_filename']
-#         info['original_name'] = file_data['original_filename']
-#         return jsonify({
-#             'success': True,
-#             'info': info
-#         })
-#     else:
-#         return jsonify({
-#             'success': False,
-#             'error': info.get('error', 'Failed to extract PDF information')
-#         }), 500
-
 
 @app.route('/api/split', methods=['POST'])
 def split_pdf_api():
@@ -609,7 +585,8 @@ def sign_pdf_api():
         **result,
         'download_url': f'/api/download/{output_filename}'
     })
-#
+
+
 # # commented & modified extract_info_api to serve pdf optionally
 # # Add a route to serve the original PDF for PDF.js to render
 # @app.route('/api/serve-pdf/<filename>')

@@ -1,0 +1,3 @@
+For page routes i.e render template use views.py
+For API endpoints /api/api-name use pdf_api.py -- (it already has a prefix of /api)
+

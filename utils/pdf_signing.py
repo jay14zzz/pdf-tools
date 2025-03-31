@@ -137,3 +137,4 @@ def sign_pdf_document(pdf_path, sig_path, output_path, coords, page_num=0):
     except Exception as e:
         return False, {'error': f'Failed to sign PDF: {str(e)}'}
 
+

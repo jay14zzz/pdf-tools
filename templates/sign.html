@@ -665,8 +665,12 @@
             .then(data => {
                 if (data.success) {
                     // Show download link
-                    downloadLink.href = data.download_url;
+                    // downloadLink.href = data.download_url;
+                    // downloadLink.classList.remove('hidden');
+                    const downloadUrl = `/api/download/${data.output_filename}`;
+                    downloadLink.href = downloadUrl;
                     downloadLink.classList.remove('hidden');
+
 
                     // Disable sign button
                     signPdfBtn.disabled = true;

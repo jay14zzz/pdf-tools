@@ -6,7 +6,7 @@ import tempfile
 from PyPDF2 import PdfReader, PdfWriter
 import fitz
 import base64
-
+from config import DevelopmentConfig, ProductionConfig
 
 # Import PDF utility functions from separate modules
 
@@ -17,18 +17,13 @@ app = Flask(__name__)
 app.register_blueprint(views_bp)
 app.register_blueprint(pdf_api_bp, url_prefix='/api')
 
+
+
 ## Config
+# Load the appropriate config
+# app.config.from_object(ProductionConfig)
+app.config.from_object(DevelopmentConfig)
 
-app.secret_key = 'your_secret_key'
-# Configuration to remove trailing slashes
-# app.url_map.strict_slashes = False
-# need to use return redirect(url_for('index') for trailing slash
-
-
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['RESULT_FOLDER'] = 'results'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
-app.secret_key = os.urandom(24)  # For session management
 
 # Create necessary directories if they don't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)

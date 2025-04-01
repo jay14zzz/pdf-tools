@@ -738,3 +738,139 @@ def format_file_size(size_bytes):
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.2f} TB"
+
+
+def add_pdf_password(input_path, password, output_path):
+    """
+    Add password protection to a PDF file.
+
+    Args:
+        input_path (str): Path to the input PDF file
+        password (str): Password to add to the PDF
+        output_path (str): Path to save the password-protected PDF
+
+    Returns:
+        dict: Result of the operation
+    """
+    try:
+        # Validate input
+        if not password or len(password.strip()) == 0:
+            return {
+                'success': False,
+                'error': "Password cannot be empty"
+            }
+
+        # Make sure input file exists
+        if not os.path.exists(input_path):
+            return {
+                'success': False,
+                'error': "Input file does not exist"
+            }
+
+        # Check if PDF is already encrypted
+        with open(input_path, 'rb') as file:
+            reader = PdfReader(file)
+            if reader.is_encrypted:
+                return {
+                    'success': False,
+                    'error': "PDF is already password protected. Remove existing password first."
+                }
+
+        # Open the PDF and add password
+        with open(input_path, 'rb') as file:
+            reader = PdfReader(file)
+            writer = PdfWriter()
+
+            # Copy all pages to the writer
+            for page in reader.pages:
+                writer.add_page(page)
+
+            # Add password encryption
+            writer.encrypt(password)
+
+            # Write the output file
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+
+        return {
+            'success': True,
+            'message': "Password protection added successfully",
+            'protected': True
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Failed to add password: {str(e)}"
+        }
+
+
+def remove_pdf_password(input_path, password, output_path):
+    """
+    Remove password protection from a PDF file.
+
+    Args:
+        input_path (str): Path to the input PDF file
+        password (str): Current password of the PDF
+        output_path (str): Path to save the unprotected PDF
+
+    Returns:
+        dict: Result of the operation
+    """
+    try:
+        # Make sure input file exists
+        if not os.path.exists(input_path):
+            return {
+                'success': False,
+                'error': "Input file does not exist"
+            }
+
+        # Open the PDF and try to decrypt with provided password
+        with open(input_path, 'rb') as file:
+            reader = PdfReader(file)
+
+            # Check if PDF is actually encrypted
+            if not reader.is_encrypted:
+                return {
+                    'success': False,
+                    'error': "PDF is not password protected"
+                }
+
+            # Try to decrypt with the provided password
+            decrypt_success = False
+            try:
+                decrypt_success = reader.decrypt(password)
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f"Decryption error: {str(e)}"
+                }
+
+            # Check decryption result - PyPDF2 returns an integer code
+            # 0: failed, 1: user password succeeded, 2: owner password succeeded
+            if decrypt_success in (1, 2):
+                # Create a new PDF without encryption
+                writer = PdfWriter()
+
+                # Copy all pages to the writer
+                for page in reader.pages:
+                    writer.add_page(page)
+
+                # Write the output file (without encryption)
+                with open(output_path, 'wb') as output_file:
+                    writer.write(output_file)
+
+                return {
+                    'success': True,
+                    'message': "Password protection removed successfully",
+                    'protected': False
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': "Incorrect password"
+                }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Failed to remove password: {str(e)}"
+        }

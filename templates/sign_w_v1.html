@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Signature App</title>
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .upload-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .upload-box {
+            flex: 1;
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+        }
+        .pdf-workspace {
+            position: relative;
+            border: 1px solid #ddd;
+            margin-top: 20px;
+            min-height: 500px;
+        }
+        #pdf-canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        #signature-overlay {
+            position: absolute;
+            cursor: move;
+            border: 2px dashed green;
+            resize: both;
+            overflow: auto;
+            z-index: 10;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .pdf-metadata {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+        .page-navigation {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        .page-navigation button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .page-navigation button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .page-navigation span {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Signature Application</h1>
+
+        <div class="upload-section">
+            <div class="upload-box">
+                <h3>Upload PDF</h3>
+                <input type="file" id="pdf-upload" accept=".pdf">
+                <p id="pdf-upload-status">Select a PDF to upload</p>
+            </div>
+
+            <div class="upload-box">
+                <h3>Upload Signature</h3>
+                <input type="file" id="signature-upload" accept="image/*">
+                <p id="signature-upload-status">Select a signature image</p>
+            </div>
+        </div>
+
+        <div id="error-container" class="error-message"></div>
+
+        <div id="pdf-metadata" class="pdf-metadata hidden">
+            <h3>PDF Metadata</h3>
+            <div id="metadata-content"></div>
+        </div>
+
+        <div class="pdf-workspace" id="pdf-workspace">
+            <canvas id="pdf-canvas"></canvas>
+            <div id="signature-overlay" class="hidden">
+                <img id="signature-drag-img" src="" style="width: 100%; height: 100%;">
+            </div>
+        </div>
+
+        <div class="page-navigation hidden" id="page-navigation">
+            <button id="prev-page">Previous</button>
+            <span id="page-info">Page 1 of 1</span>
+            <button id="next-page">Next</button>
+        </div>
+
+        <div class="control-panel">
+            <button id="sign-pdf-btn" class="btn hidden">Sign PDF</button>
+            <a id="download-link" class="btn hidden" href="#" download>Download Signed PDF</a>
+        </div>
+    </div>
+
+    <script>
+        // Initialize PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // DOM Elements
+        const pdfUpload = document.getElementById('pdf-upload');
+        const signatureUpload = document.getElementById('signature-upload');
+        const pdfUploadStatus = document.getElementById('pdf-upload-status');
+        const signatureUploadStatus = document.getElementById('signature-upload-status');
+        const errorContainer = document.getElementById('error-container');
+        const pdfMetadata = document.getElementById('pdf-metadata');
+        const metadataContent = document.getElementById('metadata-content');
+        const pdfWorkspace = document.getElementById('pdf-workspace');
+        const pdfCanvas = document.getElementById('pdf-canvas');
+        const signatureOverlay = document.getElementById('signature-overlay');
+        const signatureDragImg = document.getElementById('signature-drag-img');
+        const signPdfBtn = document.getElementById('sign-pdf-btn');
+        const downloadLink = document.getElementById('download-link');
+        const pageNavigation = document.getElementById('page-navigation');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
+
+        // State variables
+        let pdfFile = null;
+        let signatureFile = null;
+        let signatureSessionId = null;
+        let pdfDoc = null;
+        let currentPage = 1;
+        let totalPages = 0;
+        let pdfScale = 1.0;
+
+        // Initialize PDF viewer
+        let pdfContext = pdfCanvas.getContext('2d');
+
+        // Render PDF page
+        async function renderPage(pageNum) {
+            if (!pdfDoc) return;
+
+            // Get page
+            const page = await pdfDoc.getPage(pageNum);
+
+            // Set scale
+            const viewport = page.getViewport({ scale: pdfScale });
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.width = viewport.width;
+
+            // Render PDF page
+            const renderContext = {
+                canvasContext: pdfContext,
+                viewport: viewport
+            };
+
+            await page.render(renderContext).promise;
+
+            // Update page info
+            pageInfo.textContent = `Page ${pageNum} of ${totalPages}`;
+
+            // Enable/disable navigation buttons
+            prevPageBtn.disabled = pageNum <= 1;
+            nextPageBtn.disabled = pageNum >= totalPages;
+
+            // Update current page
+            currentPage = pageNum;
+        }
+
+        // PDF Upload
+        pdfUpload.addEventListener('change', function(event) {
+            console.log('PDF Upload Event Triggered');
+            const file = event.target.files[0];
+            if (!file) {
+                console.error('No file selected');
+                return;
+            }
+
+            console.log('Selected PDF File:', file.name);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('include_pdf_content', 'true');
+
+            console.log('Attempting to fetch PDF info');
+            fetch('/api/extract-info', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Fetch Response:', response);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Fetch Data:', data);
+                if (data.success) {
+                    // Update PDF upload status
+                    pdfUploadStatus.textContent = `Uploaded: ${file.name}`;
+
+                    // Store the unique filename for later use in signing
+                    pdfFile = {
+                        originalFile: file,
+                        uniqueFilename: data.info.filename
+                    };
+
+                    // Set total pages
+                    totalPages = data.info.page_count || 1;
+
+                    // Load PDF content using PDF.js
+                    if (data.info.pdf_base64) {
+                        const byteCharacters = atob(data.info.pdf_base64);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let i = 0; i < byteCharacters.length; i++) {
+                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        }
+                        const byteArray = new Uint8Array(byteNumbers);
+
+                        // Load PDF document
+                        pdfjsLib.getDocument({ data: byteArray }).promise.then(pdf => {
+                            pdfDoc = pdf;
+
+                            // Show page navigation
+                            if (totalPages > 1) {
+                                pageNavigation.classList.remove('hidden');
+                            }
+
+                            // Render first page
+                            renderPage(1);
+                        }).catch(error => {
+                            console.error('PDF.js error:', error);
+                            errorContainer.textContent = 'Failed to load PDF: ' + error.message;
+                        });
+                    }
+
+                    // Display PDF metadata
+                    displayPdfMetadata(data.info);
+
+                    // Clear any previous errors
+                    errorContainer.textContent = '';
+
+                    // Enable sign PDF button if signature is uploaded
+                    if (signatureFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
+                } else {
+                    throw new Error(data.error || 'Failed to upload PDF');
+                }
+            })
+            .catch(error => {
+                console.error('PDF Upload Error:', error);
+                errorContainer.textContent = error.message;
+                pdfUploadStatus.textContent = 'Select a PDF to upload';
+
+                // Reset PDF file and preview
+                pdfFile = null;
+                pdfDoc = null;
+                pageNavigation.classList.add('hidden');
+            });
+        });
+
+        // Signature Upload
+        signatureUpload.addEventListener('change', function(event) {
+            console.log('Signature Upload Event Triggered');
+            const file = event.target.files[0];
+            if (!file) {
+                console.error('No signature file selected');
+                return;
+            }
+
+            console.log('Selected Signature File:', file.name);
+
+            const formData = new FormData();
+            formData.append('signature', file);
+
+            console.log('Attempting to fetch Signature info');
+            fetch('/api/process-signature', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Fetch Response:', response);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Fetch Data:', data);
+                if (data.success) {
+                    // Update signature upload status
+                    signatureUploadStatus.textContent = `Uploaded: ${file.name}`;
+                    signatureFile = file;
+                    signatureSessionId = data.signature_filename;
+
+                    // Prepare draggable signature overlay
+                    signatureDragImg.src = data.signature_image;
+                    signatureOverlay.classList.remove('hidden');
+                    makeSignatureDraggable();
+
+                    // Enable sign PDF button
+                    if (pdfFile) {
+                        signPdfBtn.classList.remove('hidden');
+                    }
+
+                    // Clear any previous errors
+                    errorContainer.textContent = '';
+                } else {
+                    throw new Error(data.error || 'Failed to process signature');
+                }
+            })
+            .catch(error => {
+                console.error('Signature Upload Error:', error);
+                errorContainer.textContent = error.message;
+                signatureUploadStatus.textContent = 'Select a signature image';
+            });
+        });
+
+        // Make signature draggable
+        function makeSignatureDraggable() {
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+
+            // Ensure signature overlay is absolutely positioned
+            signatureOverlay.style.position = 'absolute';
+            signatureOverlay.style.zIndex = '10';
+
+            signatureOverlay.addEventListener('mousedown', dragStart);
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', dragEnd);
+
+            function dragStart(e) {
+                // Only start dragging if clicking on the signature image
+                if (e.target !== signatureDragImg) return;
+
+                // Get the current position of the overlay
+                const rect = signatureOverlay.getBoundingClientRect();
+
+                // Calculate initial offsets
+                initialX = e.clientX - rect.left;
+                initialY = e.clientY - rect.top;
+
+                isDragging = true;
+            }
+
+            function drag(e) {
+                if (isDragging) {
+                    e.preventDefault();
+
+                    // Get workspace boundaries
+                    const workspaceRect = pdfWorkspace.getBoundingClientRect();
+                    const signatureRect = signatureOverlay.getBoundingClientRect();
+
+                    // Calculate new position
+                    let newX = e.clientX - workspaceRect.left - initialX;
+                    let newY = e.clientY - workspaceRect.top - initialY;
+
+                    // Constrain horizontal movement
+                    newX = Math.max(0, Math.min(newX, workspaceRect.width - signatureRect.width));
+
+                    // Constrain vertical movement
+                    newY = Math.max(0, Math.min(newY, workspaceRect.height - signatureRect.height));
+
+                    // Apply new position
+                    signatureOverlay.style.left = `${newX}px`;
+                    signatureOverlay.style.top = `${newY}px`;
+                }
+            }
+
+            function dragEnd(e) {
+                isDragging = false;
+            }
+
+            // Initial setup
+            signatureOverlay.style.width = '150px';
+            signatureOverlay.style.height = '80px';
+
+            // Position signature in center of workspace
+            const workspaceRect = pdfWorkspace.getBoundingClientRect();
+            const initialPosX = (workspaceRect.width - 150) / 2;
+            const initialPosY = (workspaceRect.height - 80) / 2;
+
+            signatureOverlay.style.left = `${initialPosX}px`;
+            signatureOverlay.style.top = `${initialPosY}px`;
+        }
+
+        // Sign PDF
+        signPdfBtn.addEventListener('click', function() {
+            if (!pdfFile || !signatureFile) {
+                errorContainer.textContent = 'Please upload both PDF and signature';
+                return;
+            }
+
+            // Get signature overlay position relative to PDF workspace
+            const pdfWorkspaceRect = pdfWorkspace.getBoundingClientRect();
+            const signatureRect = signatureOverlay.getBoundingClientRect();
+            const pdfCanvasRect = pdfCanvas.getBoundingClientRect();
+
+            const signData = {
+                pdf_filename: pdfFile.uniqueFilename,
+                signature_filename: signatureSessionId,
+                page_number: currentPage, // Add the current page number
+                // Calculate position relative to PDF canvas
+                x: signatureRect.left - pdfCanvasRect.left,
+                y: signatureRect.top - pdfCanvasRect.top,
+                width: signatureRect.width,
+                height: signatureRect.height
+            };
+
+            fetch('/api/sign-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(signData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    downloadLink.href = data.download_url;
+                    downloadLink.classList.remove('hidden');
+                    signPdfBtn.disabled = true;
+                    errorContainer.textContent = 'PDF signed successfully!';
+                } else {
+                    throw new Error(data.error || 'Failed to sign PDF');
+                }
+            })
+            .catch(error => {
+                errorContainer.textContent = error.message;
+            });
+        });
+
+        // Display PDF Metadata
+        function displayPdfMetadata(info) {
+            const metadata = info.metadata || {};
+            const metadataHTML = `
+                <p><strong>File Size:</strong> ${info.file_size_formatted}</p>
+                <p><strong>Page Count:</strong> ${info.page_count}</p>
+                <p><strong>Title:</strong> ${metadata.title || 'N/A'}</p>
+                <p><strong>Author:</strong> ${metadata.author || 'N/A'}</p>
+                <p><strong>Created:</strong> ${info.created_date || 'N/A'}</p>
+                <p><strong>Modified:</strong> ${info.modified_date || 'N/A'}</p>
+            `;
+
+            metadataContent.innerHTML = metadataHTML;
+            pdfMetadata.classList.remove('hidden');
+        }
+
+        // Page navigation
+        prevPageBtn.addEventListener('click', function() {
+            if (currentPage > 1) {
+                renderPage(currentPage - 1);
+            }
+        });
+
+        nextPageBtn.addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                renderPage(currentPage + 1);
+            }
+        });
+    </script>
+</body>
+</html>

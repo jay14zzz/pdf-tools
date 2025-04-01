@@ -20,7 +20,9 @@ from utils.pdf_operations import (
     merge_pdfs,
     reorder_pages,
     extract_pdf_info,
-    insert_pdf_at_position
+    insert_pdf_at_position,
+    add_pdf_password,
+    remove_pdf_password
 )
 
 # Import the PDF signing module
@@ -528,6 +530,44 @@ def sign_pdf_api():
 #         os.path.join(current_app.config['UPLOAD_FOLDER'], filename),
 #         mimetype='application/pdf'
 #     )
+
+@pdf_api_bp.route('/password', methods=['POST'])
+def pdf_password_api():
+    # Handle file upload
+    file_data, error_response, status_code = handle_file_upload(request)
+    if error_response:
+        return jsonify(error_response), status_code
+
+    # Get password operation type (add or remove)
+    operation = request.form.get('operation')
+    if operation not in ['add', 'remove']:
+        return jsonify({
+            'success': False,
+            'error': "Invalid operation. Must be 'add' or 'remove'"
+        }), 400
+
+    # Generate output filepath
+    operation_prefix = f"password_{operation}_result"
+    output_filepath, output_filename = generate_result_filepath(
+        file_data['original_filename'], prefix=operation_prefix
+    )
+
+    # Get password parameters
+    new_password = request.form.get('new_password', '')
+    current_password = request.form.get('current_password', '')
+
+    # Perform password operation
+    if operation == 'add':
+        result = add_pdf_password(file_data['filepath'], new_password, output_filepath)
+    else:  # remove
+        result = remove_pdf_password(file_data['filepath'], current_password, output_filepath)
+
+    # Return result
+    if result["success"]:
+        result["output_filename"] = output_filename
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
 
 
 # Download routes

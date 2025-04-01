@@ -55,3 +55,8 @@ def sign():
     """Render the sign page"""
     return render_template('sign.html')
 
+@views_bp.route('/password')
+def password():
+    """Render the PDF password page"""
+    return render_template('password.html')
+

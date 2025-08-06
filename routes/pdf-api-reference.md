@@ -4,7 +4,6 @@ Use for quick reference ONLY
 
 This reference document was generated using an AI model. While efforts have been made to verify the information, it may not fully reflect the latest code changes or specific implementation details. For the most reliable and up-to-date information, please refer directly to the actual codebase.
 
-
 ---
 
 # PDF API Reference Documentation
